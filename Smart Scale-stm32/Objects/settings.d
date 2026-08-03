@@ -29,3 +29,4 @@
 .\objects\settings.o: .\Libaray\stm32f10x_usart.h
 .\objects\settings.o: .\Libaray\stm32f10x_wwdg.h
 .\objects\settings.o: .\Libaray\misc.h
+.\objects\settings.o: Hardware\app_config.h

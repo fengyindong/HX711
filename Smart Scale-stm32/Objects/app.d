@@ -30,6 +30,7 @@
 .\objects\app.o: .\Libaray\stm32f10x_usart.h
 .\objects\app.o: .\Libaray\stm32f10x_wwdg.h
 .\objects\app.o: .\Libaray\misc.h
+.\objects\app.o: Hardware\app_config.h
 .\objects\app.o: Hardware\bsp_time.h
 .\objects\app.o: Hardware\bsp_usart.h
 .\objects\app.o: Hardware\esp8266_link.h

@@ -36,7 +36,7 @@
 ".\objects\oled.o"
 ".\objects\scale.o"
 ".\objects\settings.o"
---strict --scatter ".\Objects\Intelligent weighing system.sct"
+--library_type=microlib --strict --scatter ".\Objects\Intelligent weighing system.sct"
 --summary_stderr --info summarysizes --map --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list ".\Listings\Intelligent weighing system.map" -o ".\Objects\Intelligent weighing system.axf"

@@ -11,6 +11,8 @@
 #define MQTT_CLIENT_ID      "hx711-scale-01"
 #define MQTT_STATE_TOPIC    "scale/weight"
 #define MQTT_COMMAND_TOPIC  "scale/command"
+#define MQTT_STATUS_TOPIC   "scale/status"
+#define MQTT_NETWORK_TOPIC  "scale/network"
 
 /* ESP8266硬件串口RX=GPIO3，连接STM32的PA2 TX。 */
 #define STM32_BAUDRATE      9600

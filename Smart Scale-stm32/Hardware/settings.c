@@ -1,11 +1,12 @@
 #include "settings.h"
 
 #include "stm32f10x_flash.h"
+#include "app_config.h"
 
 /* 参数存储模块：使用STM32最后一页Flash保存标定和用户设置。 */
 #define SETTINGS_FLASH_ADDRESS  0x0800FC00UL
 #define SETTINGS_MAGIC          0x48583731UL
-#define SETTINGS_VERSION        1U
+#define SETTINGS_VERSION        2U
 
 /* Flash记录包含头部、业务参数和校验值，可识别空白页或旧版本数据。 */
 typedef struct {
@@ -32,7 +33,8 @@ void Settings_SetDefaults(App_Settings *settings)
 {
     settings->offset = 0;
     settings->counts_per_gram = 0.0f;
-    settings->alarm_limit_g = 1000.0f;
+    /* 默认在达到5kg物理极限前提前500g报警。 */
+    settings->alarm_limit_g = SCALE_DEFAULT_ALARM_G;
     settings->unit = 0U;
     settings->calibrated = 0U;
 }

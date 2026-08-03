@@ -93,14 +93,15 @@
         {
             "name": "Target 1",
             "includePath": [
-                "c:\\Users\\Administrator\\Desktop\\Smart Scale\\Hardware",
-                "c:\\Users\\Administrator\\Desktop\\Smart Scale\\Libaray",
-                "c:\\Users\\Administrator\\Desktop\\Smart Scale\\Star",
-                "c:\\Users\\Administrator\\Desktop\\Smart Scale\\System",
-                "c:\\Users\\Administrator\\Desktop\\Smart Scale\\User"
+                "c:\\Users\\Administrator\\Desktop\\称重项目\\Smart Scale-stm32\\Hardware",
+                "c:\\Users\\Administrator\\Desktop\\称重项目\\Smart Scale-stm32\\Libaray",
+                "c:\\Users\\Administrator\\Desktop\\称重项目\\Smart Scale-stm32\\Star",
+                "c:\\Users\\Administrator\\Desktop\\称重项目\\Smart Scale-stm32\\System",
+                "c:\\Users\\Administrator\\Desktop\\称重项目\\Smart Scale-stm32\\User"
             ],
             "defines": [
                 "USE_STDPERIPH_DRIVER",
+                "STM32F10X_MD",
                 "__CC_ARM",
                 "__arm__",
                 "__align(x)=",

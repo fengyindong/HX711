@@ -19,6 +19,26 @@ static long ToTenths(float value)
     return (long)((scaled >= 0.0f) ? scaled + 0.5f : scaled - 0.5f);
 }
 
+typedef struct {
+    const char *sign;
+    unsigned long whole;
+    unsigned long fraction;
+} Fixed1;
+
+/* 把x10整数拆成符号、整数和一位小数，供JSON数字直接可读显示。 */
+static Fixed1 SplitTenths(long tenths)
+{
+    Fixed1 value;
+    unsigned long magnitude;
+
+    value.sign = (tenths < 0L) ? "-" : "";
+    magnitude = (tenths < 0L) ? (unsigned long)(-tenths) :
+                                (unsigned long)tenths;
+    value.whole = magnitude / 10UL;
+    value.fraction = magnitude % 10UL;
+    return value;
+}
+
 void ESP8266_LinkInit(uint32_t baudrate)
 {
     GPIO_InitTypeDef gpio;
@@ -43,17 +63,38 @@ void ESP8266_LinkInit(uint32_t baudrate)
 }
 
 void ESP8266_SendWeight(float weight_g, const char *unit,
-                        float display_value, uint8_t alarm,
+                        float display_value, float alarm_limit_g,
+                        float capacity_g, uint8_t alarm,
+                        uint8_t over_limit, uint8_t over_range,
                         uint8_t stable)
 {
-    char text[128];
-    long grams = ToTenths(weight_g);
-    long shown = ToTenths(display_value);
+    char text[256];
+    Fixed1 grams = SplitTenths(ToTenths(weight_g));
+    Fixed1 shown = SplitTenths(ToTenths(display_value));
+    Fixed1 alarm_limit = SplitTenths(ToTenths(alarm_limit_g));
+    Fixed1 capacity = SplitTenths(ToTenths(capacity_g));
+    const char *state;
 
-    /* 每条消息以CRLF结束，ESP8266按行接收，便于处理粘包和拆包。 */
+    if (over_range != 0U) state = "over_range";
+    else if (over_limit != 0U) state = "over_limit";
+    else if (stable == 0U) state = "moving";
+    else state = "stable";
+
+    /*
+     * JSON直接输出一位小数，订阅端无需再除以10。数值先拆成整数部分
+     * 和小数部分，因此不需要开启STM32 printf的浮点格式支持。
+     */
     snprintf(text, sizeof(text),
-             "{\"weight_g_x10\":%ld,\"value_x10\":%ld,\"unit\":\"%s\","
-             "\"alarm\":%u,\"stable\":%u}\r\n",
-             grams, shown, unit, (unsigned)alarm, (unsigned)stable);
+             "{\"device\":\"hx711-scale\",\"weight_g\":%s%lu.%lu,"
+             "\"display_value\":%s%lu.%lu,\"unit\":\"%s\","
+             "\"alarm_limit_g\":%s%lu.%lu,\"capacity_g\":%s%lu.%lu,"
+             "\"stable\":%u,\"alarm\":%u,\"over_limit\":%u,"
+             "\"over_range\":%u,\"state\":\"%s\"}\r\n",
+             grams.sign, grams.whole, grams.fraction,
+             shown.sign, shown.whole, shown.fraction, unit,
+             alarm_limit.sign, alarm_limit.whole, alarm_limit.fraction,
+             capacity.sign, capacity.whole, capacity.fraction,
+             (unsigned)stable, (unsigned)alarm, (unsigned)over_limit,
+             (unsigned)over_range, state);
     ESP8266_Write(text);
 }

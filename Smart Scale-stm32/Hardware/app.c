@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include "alarm.h"
+#include "app_config.h"
 #include "bsp_time.h"
 #include "bsp_usart.h"
 #include "esp8266_link.h"
@@ -17,7 +18,7 @@ typedef enum { APP_WEIGH, APP_MENU, APP_CAL_SELECT, APP_CAL_EMPTY,
 typedef enum { MENU_TARE, MENU_UNIT, MENU_LIMIT, MENU_ZERO, MENU_COUNT } Menu_Item;
 
 /* 用户可选的三种标准砝码，单位始终为克。 */
-static const float g_cal_masses[] = {10.0f, 50.0f, 100.0f};
+static const float g_cal_masses[] = {100.0f, 500.0f, 1000.0f};
 static App_Settings g_settings;
 static Scale_Calibration g_cal;
 static App_State g_state;
@@ -27,6 +28,8 @@ static float g_weight_g;
 static float g_display_value;
 static uint8_t g_stable;
 static uint8_t g_alarm;
+static uint8_t g_over_limit;
+static uint8_t g_over_range;
 static uint32_t g_last_display;
 static uint32_t g_last_publish;
 static uint32_t g_last_timeout;
@@ -162,9 +165,19 @@ static void HandleKey(Key_Event event)
         /* 功能键换菜单，加减键只修改报警阈值，确认键执行菜单。 */
         if (event == KEY_FUNC_SHORT) g_menu = (Menu_Item)((g_menu + 1U) % MENU_COUNT);
         else if ((event == KEY_PLUS) && (g_menu == MENU_LIMIT) &&
-                 (g_settings.alarm_limit_g < 1000.0f)) g_settings.alarm_limit_g += 10.0f;
+                 (g_settings.alarm_limit_g < SCALE_CAPACITY_G)) {
+            g_settings.alarm_limit_g += SCALE_ALARM_STEP_G;
+            if (g_settings.alarm_limit_g > SCALE_CAPACITY_G) {
+                g_settings.alarm_limit_g = SCALE_CAPACITY_G;
+            }
+        }
         else if ((event == KEY_MINUS) && (g_menu == MENU_LIMIT) &&
-                 (g_settings.alarm_limit_g > 10.0f)) g_settings.alarm_limit_g -= 10.0f;
+                 (g_settings.alarm_limit_g > SCALE_ALARM_MIN_G)) {
+            g_settings.alarm_limit_g -= SCALE_ALARM_STEP_G;
+            if (g_settings.alarm_limit_g < SCALE_ALARM_MIN_G) {
+                g_settings.alarm_limit_g = SCALE_ALARM_MIN_G;
+            }
+        }
         else if (event == KEY_OK) {
             if ((g_menu == MENU_TARE) || (g_menu == MENU_ZERO)) {
                 status = Scale_Tare(&g_cal);
@@ -176,7 +189,7 @@ static void HandleKey(Key_Event event)
             } else { Settings_Save(&g_settings); ShowMessage("LIMIT SAVED", 1000U, APP_WEIGH); }
         }
     } else if (g_state == APP_CAL_SELECT) {
-        /* 加减键在10/50/100g之间循环，不会产生越界索引。 */
+        /* 加减键在100/500/1000g之间循环，不会产生越界索引。 */
         if (event == KEY_PLUS) g_cal_index = (uint8_t)((g_cal_index + 1U) % 3U);
         else if (event == KEY_MINUS) g_cal_index = (uint8_t)((g_cal_index + 2U) % 3U);
         else if (event == KEY_OK) g_state = APP_CAL_EMPTY;
@@ -201,6 +214,7 @@ void App_Init(void)
     HX711_Init(); Keys_Init(); Alarm_Init(); OLED_Init();
     Settings_Load(&g_settings); SyncCalibration();
     g_weight_g = 0.0f; g_display_value = 0.0f; g_stable = 0U; g_alarm = 0U;
+    g_over_limit = 0U; g_over_range = 0U;
     g_last_display = 0U; g_last_publish = 0U; g_last_timeout = 0U;
     g_last_sensor_retry = 0U;
     BSP_USART1_WriteString("\r\nHX711 scale, USART1 9600 8N1\r\n");
@@ -213,7 +227,7 @@ void App_Init(void)
         /* Flash没有有效标定时，首次启动进入校准砝码选择。 */
         g_state = g_settings.calibrated ? APP_WEIGH : APP_CAL_SELECT;
         if (!g_settings.calibrated) {
-            BSP_USART1_WriteString("CAL: select 10/50/100 g, then press OK\r\n");
+            BSP_USART1_WriteString("CAL: select 100/500/1000 g, then press OK\r\n");
         }
     } else {
         /* 故障时不阻塞启动，显示错误并在前台周期性自动重试。 */
@@ -247,10 +261,15 @@ void App_Run(void)
         g_stable = (status == HX711_OK);
         if ((status == HX711_OK) || (status == HX711_NOT_STABLE)) {
             g_display_value = ConvertUnit(g_weight_g);
-            /* 用户阈值和传感器1kg物理量程任一超出都触发报警。 */
-            g_alarm = ((g_weight_g > g_settings.alarm_limit_g) || (g_weight_g > 1000.0f));
+            /* 分别记录用户阈值报警和5kg物理量程报警，便于远端判断原因。 */
+            g_over_limit = (g_weight_g > g_settings.alarm_limit_g);
+            g_over_range = ((g_weight_g > SCALE_CAPACITY_G) ||
+                            (g_weight_g < -SCALE_CAPACITY_G));
+            g_alarm = (g_over_limit || g_over_range);
         } else {
             g_alarm = 1U;
+            g_over_limit = 0U;
+            g_over_range = 0U;
             if ((uint32_t)(now - g_last_timeout) >= 1000U) {
                 g_last_timeout = now;
                 BSP_USART1_WriteString("timeout\r\n");
@@ -258,9 +277,11 @@ void App_Run(void)
         }
         Alarm_Set(g_alarm);
         /* 每秒发送一次完整状态，降低串口和MQTT服务器负担。 */
-        if ((uint32_t)(now - g_last_publish) >= 1000U) {
+        if ((uint32_t)(now - g_last_publish) >= SCALE_REPORT_INTERVAL_MS) {
             g_last_publish = now;
-            ESP8266_SendWeight(g_weight_g, UnitName(), g_display_value, g_alarm, g_stable);
+            ESP8266_SendWeight(g_weight_g, UnitName(), g_display_value,
+                               g_settings.alarm_limit_g, SCALE_CAPACITY_G,
+                               g_alarm, g_over_limit, g_over_range, g_stable);
         }
     } else Alarm_Set(0U);
     /* OLED最高5Hz刷新，兼顾视觉响应和软件I2C占用时间。 */
